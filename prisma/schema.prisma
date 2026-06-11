@@ -1,0 +1,89 @@
+// Movie Memory — Prisma schema
+// Models split into two groups:
+//   1. Auth.js (NextAuth) standard models: User, Account, Session, VerificationToken.
+//      These are required by @auth/prisma-adapter and use database sessions.
+//   2. App models: the User extension (favoriteMovie) + Fact.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Prisma 7: connection URLs live in prisma.config.ts (for migrate/introspect)
+  // and are passed via a driver adapter to PrismaClient (for the running app).
+  provider = "postgresql"
+}
+
+// ── Auth.js models ────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  // App-specific: the user's current favorite movie.
+  // null = onboarding not yet completed (first-time user).
+  favoriteMovie String?
+
+  accounts Account[]
+  sessions Session[]
+  facts    Fact[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ── App models ────────────────────────────────────────────────────────────────
+
+// One row per generated fun fact. We store the `movie` text snapshot the fact
+// was generated for, so facts remain correctly attributed even after the user
+// changes their favorite movie. (userId, createdAt) indexes the common query:
+// "the most recent fact for this user".
+model Fact {
+  id        String   @id @default(cuid())
+  userId    String
+  movie     String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
